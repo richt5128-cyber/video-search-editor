@@ -5,21 +5,29 @@ import FadeEditor from '../components/editor/FadeEditor';
 import TextOverlay from '../components/editor/TextOverlay';
 import ScreenOverlay from '../components/editor/ScreenOverlay';
 import useEditorStore from '../store/editorStore';
-import { FiScissors, FiSunrise, FiType, FiLayers, FiDownload, FiSave } from 'react-icons/fi';
+import {
+  FiScissors, FiSunrise, FiType, FiLayers,
+  FiDownload, FiSave, FiFilm, FiSearch, FiInfo,
+  FiPlay, FiPause, FiVolume2
+} from 'react-icons/fi';
 
 const TABS = [
-  { id: 'trim',    label: 'Trim',    icon: <FiScissors /> },
-  { id: 'fade',    label: 'Fades',   icon: <FiSunrise /> },
-  { id: 'text',    label: 'Text',    icon: <FiType /> },
-  { id: 'overlay', label: 'Overlay', icon: <FiLayers /> },
+  { id: 'trim',    label: 'Trim',    icon: <FiScissors size={13} /> },
+  { id: 'fade',    label: 'Fades',   icon: <FiSunrise  size={13} /> },
+  { id: 'text',    label: 'Text',    icon: <FiType     size={13} /> },
+  { id: 'overlay', label: 'Overlay', icon: <FiLayers   size={13} /> },
 ];
 
-export default function EditorPage() {
-  const { clips } = useEditorStore();
-  const [selectedClip, setSelectedClip] = useState(null);
-  const [activeTab, setActiveTab] = useState('trim');
+const fmt = (s) =>
+  `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
-  const clip = selectedClip ? clips.find(c => c.id === selectedClip.id) : null;
+export default function EditorPage({ onGoToSearch }) {
+  const { clips, playing, setPlaying, getTotalDuration } = useEditorStore();
+  const [selectedClipId, setSelectedClipId] = useState(null);
+  const [activeTab, setActiveTab]           = useState('trim');
+
+  const clip = selectedClipId ? clips.find(c => c.id === selectedClipId) : null;
+  const total = getTotalDuration();
 
   const exportManifest = () => {
     const manifest = {
@@ -31,94 +39,243 @@ export default function EditorPage() {
         fade_in: c.fade_in, fade_out: c.fade_out,
         text_overlays: c.text_overlays, screen_overlays: c.screen_overlays,
         order: c.order,
-      }))
+      })),
     };
     const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = 'compilation-manifest.json'; a.click();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'compilation-manifest.json';
+    a.click();
   };
 
   return (
-    <div className="flex flex-col h-full gap-4 p-4 bg-gray-950 min-h-screen">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-white font-bold text-lg">🎬 Compilation Editor</h1>
-        <div className="flex gap-2">
-          <button onClick={exportManifest}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-700 hover:bg-green-600 text-white rounded-lg text-sm">
-            <FiDownload /> Export Manifest
-          </button>
-          <button className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-700 hover:bg-blue-600 text-white rounded-lg text-sm">
-            <FiSave /> Save Project
-          </button>
+    <div className="flex flex-col h-screen bg-gray-950 text-white overflow-hidden">
+
+      {/* ── Top bar ───────────────────────────────────────────────── */}
+      <header className="flex-shrink-0 flex items-center justify-between
+        px-4 py-2.5 bg-gray-900 border-b border-gray-800 gap-3">
+        <div className="flex items-center gap-3">
+          <span className="text-xl">🎬</span>
+          <div className="hidden sm:block">
+            <p className="text-sm font-bold leading-none">CompileStudio</p>
+            <p className="text-[10px] text-gray-500">Editor</p>
+          </div>
         </div>
-      </div>
 
-      {/* Timeline */}
-      <div className="flex-shrink-0" style={{ height: '160px' }}>
-        <Timeline onClipSelect={(clip) => setSelectedClip(clip)} />
-      </div>
+        {/* Playback strip */}
+        <div className="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-1.5">
+          <button
+            onClick={() => setPlaying(!playing)}
+            className="text-white hover:text-blue-400 transition-colors"
+            title={playing ? 'Pause' : 'Play timeline'}
+          >
+            {playing ? <FiPause size={15} /> : <FiPlay size={15} />}
+          </button>
+          <span className="text-xs font-mono text-gray-300">
+            {clips.length} clips · {fmt(total)}
+          </span>
+        </div>
 
-      {/* Edit panel */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Clip list */}
-        <div className="lg:col-span-1 space-y-2 overflow-y-auto">
-          <p className="text-xs font-semibold text-gray-500 uppercase px-1">Clips ({clips.length})</p>
-          {clips.length === 0 && (
-            <p className="text-xs text-gray-600 px-1">No clips yet. Search and add videos.</p>
-          )}
-          {clips.map(c => (
-            <button key={c.id} onClick={() => setSelectedClip(c)}
-              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors
-                ${selectedClip?.id === c.id ? 'bg-blue-900/40 border border-blue-700' : 'bg-gray-900 border border-gray-800 hover:border-gray-600'}`}
-            >
-              <img src={c.thumbnail} alt="" className="w-10 h-7 object-cover rounded" />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-white truncate">{c.title}</p>
-                <p className="text-[10px] text-gray-500">{c.source}</p>
-              </div>
-              <span className="text-[10px] text-gray-600">#{c.order + 1}</span>
+        <div className="flex items-center gap-2">
+          {onGoToSearch && (
+            <button onClick={onGoToSearch}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-700
+                hover:bg-gray-600 text-gray-300 rounded-lg text-xs font-medium transition-colors">
+              <FiSearch size={13} /> Search
             </button>
-          ))}
+          )}
+          <button onClick={exportManifest}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700
+              hover:bg-emerald-600 text-white rounded-lg text-xs font-medium transition-colors">
+            <FiDownload size={13} /> Export
+          </button>
+          <button
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-700
+              hover:bg-blue-600 text-white rounded-lg text-xs font-medium transition-colors">
+            <FiSave size={13} /> Save
+          </button>
         </div>
+      </header>
 
-        {/* Right panel */}
-        <div className="lg:col-span-2">
+      {/* ── Timeline ──────────────────────────────────────────────── */}
+      <div className="flex-shrink-0 border-b border-gray-800" style={{ height: 170 }}>
+        <Timeline onClipSelect={(c) => { setSelectedClipId(c.id); setActiveTab('trim'); }} />
+      </div>
+
+      {/* ── Main workspace ────────────────────────────────────────── */}
+      <div className="flex-1 grid grid-cols-[260px_1fr] overflow-hidden">
+
+        {/* ── Clip list sidebar ─────────────────────────────────── */}
+        <aside className="flex flex-col border-r border-gray-800 bg-gray-900 overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800">
+            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+              Clips ({clips.length})
+            </span>
+            {clips.length > 0 && (
+              <span className="text-[10px] text-gray-600">{fmt(total)} total</span>
+            )}
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            {clips.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-4 py-8">
+                <FiFilm size={28} className="text-gray-700" />
+                <p className="text-xs text-gray-600 leading-relaxed">
+                  No clips yet.<br />Search for videos and add them to the timeline.
+                </p>
+                {onGoToSearch && (
+                  <button onClick={onGoToSearch}
+                    className="text-xs text-blue-400 hover:text-blue-300 underline">
+                    Go to Search →
+                  </button>
+                )}
+              </div>
+            ) : (
+              clips.map((c, i) => (
+                <button
+                  key={c.id}
+                  onClick={() => { setSelectedClipId(c.id); setActiveTab('trim'); }}
+                  className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg text-left
+                    transition-all group
+                    ${selectedClipId === c.id
+                      ? 'bg-blue-600/20 border border-blue-600/50 ring-1 ring-blue-600/20'
+                      : 'border border-transparent hover:bg-gray-800 hover:border-gray-700'
+                    }`}
+                >
+                  {/* Thumbnail */}
+                  <div className="relative flex-shrink-0">
+                    <img src={c.thumbnail} alt=""
+                      className="w-12 h-8 object-cover rounded"
+                      onError={e => { e.target.src = 'https://via.placeholder.com/48x32/1f2937/6b7280?text=◼'; }}
+                    />
+                    {c.fade_in > 0 && (
+                      <div className="absolute inset-y-0 left-0 w-2 bg-gradient-to-r from-black/60 to-transparent rounded-l pointer-events-none" />
+                    )}
+                    {c.fade_out > 0 && (
+                      <div className="absolute inset-y-0 right-0 w-2 bg-gradient-to-l from-black/60 to-transparent rounded-r pointer-events-none" />
+                    )}
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-white truncate leading-snug">{c.title}</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-[10px] text-gray-500 truncate">{c.source}</span>
+                      {c.duration && (
+                        <span className="text-[10px] text-gray-600">
+                          · {fmt(c.end_trim - c.start_trim)}
+                        </span>
+                      )}
+                    </div>
+                    {/* Indicator pills */}
+                    <div className="flex gap-1 mt-0.5 flex-wrap">
+                      {(c.text_overlays?.length > 0) && (
+                        <span className="text-[9px] bg-purple-900/60 text-purple-300 px-1 rounded">
+                          T×{c.text_overlays.length}
+                        </span>
+                      )}
+                      {(c.screen_overlays?.length > 0) && (
+                        <span className="text-[9px] bg-teal-900/60 text-teal-300 px-1 rounded">
+                          L×{c.screen_overlays.length}
+                        </span>
+                      )}
+                      {(c.fade_in > 0 || c.fade_out > 0) && (
+                        <span className="text-[9px] bg-yellow-900/60 text-yellow-300 px-1 rounded">
+                          fade
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <span className="text-[10px] text-gray-700 font-mono flex-shrink-0">
+                    #{i + 1}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        </aside>
+
+        {/* ── Edit panel ────────────────────────────────────────── */}
+        <main className="flex flex-col overflow-hidden bg-gray-950">
           {!clip ? (
-            <div className="h-full flex items-center justify-center text-gray-600 text-sm">
-              Select a clip from the timeline or list to edit it
+            <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center px-8">
+              <FiInfo size={32} className="text-gray-700" />
+              <div>
+                <p className="text-sm text-gray-500 font-medium">No clip selected</p>
+                <p className="text-xs text-gray-600 mt-1">
+                  Click a clip in the sidebar or timeline to edit it
+                </p>
+              </div>
             </div>
           ) : (
-            <div className="space-y-3">
-              {/* Clip info */}
-              <div className="flex items-center gap-3 p-3 bg-gray-900 rounded-xl">
-                <img src={clip.thumbnail} alt="" className="w-16 h-10 object-cover rounded" />
-                <div>
-                  <p className="text-sm font-medium text-white">{clip.title}</p>
-                  <p className="text-xs text-gray-500">{clip.source} · {clip.duration}s total</p>
+            <div className="flex flex-col h-full overflow-hidden">
+
+              {/* Clip info bar */}
+              <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3
+                bg-gray-900 border-b border-gray-800">
+                <div className="relative">
+                  <img src={clip.thumbnail} alt=""
+                    className="w-16 h-10 object-cover rounded-lg border border-gray-700"
+                    onError={e => { e.target.src = 'https://via.placeholder.com/64x40/1f2937/6b7280?text=◼'; }}
+                  />
                 </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-white truncate">{clip.title}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-xs text-gray-500">{clip.source}</span>
+                    <span className="text-gray-700">·</span>
+                    <span className="text-xs text-gray-500">
+                      {fmt(clip.end_trim - clip.start_trim)} selected
+                    </span>
+                    <span className="text-gray-700">·</span>
+                    <span className="text-xs text-gray-600">
+                      {clip.duration}s original
+                    </span>
+                  </div>
+                </div>
+                <a
+                  href={clip.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-800
+                    hover:bg-gray-700 border border-gray-700 rounded-lg text-xs
+                    text-gray-300 transition-colors flex-shrink-0"
+                  title="Preview source"
+                >
+                  <FiPlay size={11} /> Preview
+                </a>
               </div>
 
-              {/* Edit tabs */}
-              <div className="flex gap-1 bg-gray-900 p-1 rounded-xl">
+              {/* Tab bar */}
+              <div className="flex-shrink-0 flex items-center gap-1 px-4 py-2
+                bg-gray-900 border-b border-gray-800">
                 {TABS.map(t => (
-                  <button key={t.id} onClick={() => setActiveTab(t.id)}
-                    className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-colors
-                      ${activeTab === t.id ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                  <button
+                    key={t.id}
+                    onClick={() => setActiveTab(t.id)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs
+                      font-medium transition-all
+                      ${activeTab === t.id
+                        ? 'bg-blue-600 text-white shadow-sm shadow-blue-900'
+                        : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                      }`}
                   >
-                    {t.icon} {t.label}
+                    {t.icon}
+                    <span>{t.label}</span>
                   </button>
                 ))}
               </div>
 
               {/* Tab content */}
-              {activeTab === 'trim'    && <TrimEditor    clip={clip} />}
-              {activeTab === 'fade'    && <FadeEditor    clip={clip} />}
-              {activeTab === 'text'    && <TextOverlay   clip={clip} />}
-              {activeTab === 'overlay' && <ScreenOverlay clip={clip} />}
+              <div className="flex-1 overflow-y-auto p-4">
+                {activeTab === 'trim'    && <TrimEditor    clip={clip} />}
+                {activeTab === 'fade'    && <FadeEditor    clip={clip} />}
+                {activeTab === 'text'    && <TextOverlay   clip={clip} />}
+                {activeTab === 'overlay' && <ScreenOverlay clip={clip} />}
+              </div>
             </div>
           )}
-        </div>
+        </main>
       </div>
     </div>
   );
