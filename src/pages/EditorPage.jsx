@@ -5,6 +5,7 @@ import FadeEditor from '../components/editor/FadeEditor';
 import TextOverlay from '../components/editor/TextOverlay';
 import ScreenOverlay from '../components/editor/ScreenOverlay';
 import SaveModal from '../components/editor/SaveModal';
+import ExportModal from '../components/editor/ExportModal';
 import useEditorStore from '../store/editorStore';
 import { saveProject } from '../api/projects';
 import {
@@ -28,24 +29,12 @@ export default function EditorPage({ onGoToSearch, onGoToProjects }) {
   const [selectedClipId, setSelectedClipId] = useState(null);
   const [activeTab, setActiveTab]           = useState('trim');
   const [saveOpen, setSaveOpen]             = useState(false);
+  const [exportOpen, setExportOpen]         = useState(false);
   const [lastSaved, setLastSaved]           = useState(null); // ISO timestamp
 
   const clip  = selectedClipId ? clips.find(c => c.id === selectedClipId) : null;
   const total = getTotalDuration();
 
-  /* ── Export manifest ───────────────────────────────────── */
-  const exportManifest = () => {
-    const manifest = {
-      version: '1.0',
-      exported: new Date().toISOString(),
-      clips: clips.map(c => ({
-        title: c.title, url: c.url, source: c.source,
-        start_trim: c.start_trim, end_trim: c.end_trim,
-        fade_in: c.fade_in, fade_out: c.fade_out,
-        text_overlays: c.text_overlays, screen_overlays: c.screen_overlays,
-        order: c.order,
-      })),
-    };
     const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
     const a    = document.createElement('a');
     a.href     = URL.createObjectURL(blob);
@@ -120,9 +109,12 @@ export default function EditorPage({ onGoToSearch, onGoToProjects }) {
               <FiFilm size={13} /> Projects
             </button>
           )}
-          <button onClick={exportManifest}
+          <button
+            onClick={() => setExportOpen(true)}
+            disabled={clips.length === 0}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700
-              hover:bg-emerald-600 text-white rounded-lg text-xs font-medium transition-colors">
+              hover:bg-emerald-600 text-white rounded-lg text-xs font-medium transition-colors
+              disabled:opacity-40 disabled:cursor-not-allowed">
             <FiDownload size={13} /> Export
           </button>
           <button
@@ -317,6 +309,14 @@ export default function EditorPage({ onGoToSearch, onGoToProjects }) {
           )}
         </main>
       </div>
+
+      {/* ── Export modal ──────────────────────────────────────── */}
+      <ExportModal
+        isOpen={exportOpen}
+        onClose={() => setExportOpen(false)}
+        clips={clips}
+        project={project}
+      />
 
       {/* ── Save modal ───────────────────────────────────────── */}
       <SaveModal
