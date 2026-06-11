@@ -18,7 +18,7 @@ function fmtDur(s) {
 }
 
 /* ── Grid card ───────────────────────────────────────────────── */
-function GridCard({ video, onAdd, added }) {
+function GridCard({ video, onAdd, onPreview, added }) {
   const [previewing, setPreviewing] = useState(false);
   const [imgErr,     setImgErr]     = useState(false);
   const ss = SOURCE_STYLES[video.source] || { bg: 'bg-gray-800', text: 'text-gray-300', dot: 'bg-gray-500' };
@@ -61,7 +61,7 @@ function GridCard({ video, onAdd, added }) {
               {/* Play overlay */}
               {video.downloadUrl && (
                 <button
-                  onClick={() => setPreviewing(true)}
+                  onClick={() => onPreview ? onPreview(video) : setPreviewing(true)}
                   className="absolute inset-0 flex items-center justify-center
                     opacity-0 group-hover:opacity-100 transition-opacity bg-black/40"
                 >
@@ -171,7 +171,7 @@ function GridCard({ video, onAdd, added }) {
 }
 
 /* ── List card ───────────────────────────────────────────────── */
-function ListCard({ video, onAdd, added }) {
+function ListCard({ video, onAdd, onPreview, added }) {
   const [imgErr, setImgErr] = useState(false);
   const ss = SOURCE_STYLES[video.source] || { bg: 'bg-gray-800', text: 'text-gray-300', dot: 'bg-gray-500' };
 
@@ -180,7 +180,7 @@ function ListCard({ video, onAdd, added }) {
       hover:border-gray-600 rounded-xl p-3 transition-all group">
 
       {/* Thumbnail */}
-      <div className="relative flex-shrink-0 w-28 h-16 rounded-lg overflow-hidden bg-gray-800">
+      <div onClick={() => onPreview?.(video)} className="relative flex-shrink-0 w-28 h-16 rounded-lg overflow-hidden bg-gray-800 cursor-pointer hover:ring-2 hover:ring-blue-500/60 transition-all">
         {!imgErr
           ? <img src={video.thumbnail} alt={video.title}
               onError={() => setImgErr(true)}
@@ -254,8 +254,8 @@ function ListCard({ video, onAdd, added }) {
 }
 
 /* ── Exported component ──────────────────────────────────────── */
-export default function VideoCard({ video, view, onAdd, added }) {
+export default function VideoCard({ video, view, onAdd, onPreview, added }) {
   return view === 'list'
-    ? <ListCard  video={video} onAdd={onAdd} added={added} />
-    : <GridCard  video={video} onAdd={onAdd} added={added} />;
+    ? <ListCard  video={video} onAdd={onAdd} onPreview={onPreview} added={added} />
+    : <GridCard  video={video} onAdd={onAdd} onPreview={onPreview} added={added} />;
 }
