@@ -12,6 +12,18 @@
 const PIXABAY_KEY = import.meta.env.VITE_PIXABAY_API_KEY || '';
 const PEXELS_KEY  = import.meta.env.VITE_PEXELS_API_KEY  || '';
 
+/* ─── Stagger helper (prevents rate-limit 403s on concurrent calls) ── */
+const delay = (ms) => new Promise(res => setTimeout(res, ms));
+
+async function staggered(fns, gapMs = 300) {
+  const results = [];
+  for (const fn of fns) {
+    results.push(await Promise.resolve(fn()).catch(e => ({ __error: e.message })));
+    if (fns.indexOf(fn) < fns.length - 1) await delay(gapMs);
+  }
+  return results;
+}
+
 /* ─── Operator Parser ──────────────────────────────────────────────── */
 
 export function parseOperators(raw) {
@@ -61,6 +73,7 @@ export function parseOperators(raw) {
 /* ─── Pixabay ──────────────────────────────────────────────────────── */
 
 async function searchPixabay(query, { category = '', perPage = 20, page = 1 } = {}) {
+  if (!PIXABAY_KEY) return [];
   const params = new URLSearchParams({
     key: PIXABAY_KEY,
     q: query,
@@ -72,7 +85,7 @@ async function searchPixabay(query, { category = '', perPage = 20, page = 1 } = 
   if (category) params.set('category', category.toLowerCase());
 
   const res = await fetch(`https://pixabay.com/api/videos/?${params}`);
-  if (!res.ok) throw new Error('Pixabay API error');
+  if (!res.ok) throw new Error(`Pixabay error ${res.status}`);
   const data = await res.json();
 
   return (data.hits || []).map(v => ({
@@ -98,7 +111,7 @@ async function searchPexels(query, { perPage = 20, page = 1 } = {}) {
   const res = await fetch(`https://api.pexels.com/videos/search?${params}`, {
     headers: { Authorization: PEXELS_KEY },
   });
-  if (!res.ok) throw new Error('Pexels API error');
+  if (!res.ok) throw new Error(`Pexels error ${res.status}`);
   const data = await res.json();
 
   return (data.videos || []).map(v => {
@@ -125,7 +138,7 @@ async function searchArchive(query, { rows = 20, page = 1, mediatype = 'movies' 
   const q = encodeURIComponent(`${query} AND mediatype:${mediatype}`);
   const url = `https://archive.org/advancedsearch.php?q=${q}&fl[]=identifier,title,description,subject,avg_rating&sort[]=downloads+desc&rows=${rows}&page=${page}&output=json`;
   const res = await fetch(url);
-  if (!res.ok) throw new Error('Archive.org API error');
+  if (!res.ok) throw new Error(`Archive.org error ${res.status}`);
   const data = await res.json();
 
   return (data.response?.docs || []).map(doc => ({
@@ -144,17 +157,28 @@ async function searchArchive(query, { rows = 20, page = 1, mediatype = 'movies' 
 
 /* ─── Aggregated Search ────────────────────────────────────────────── */
 
-export async function searchVideos({ query, category = '', sources = ['pixabay', 'pexels', 'archive'], page = 1 }) {
-  const ops = parseOperators(query);
+export async function searchVideos({
+  query,
+  category = '',
+  sources = ['pixabay', 'pexels', 'archive'],
+  page = 1,
+}) {
+  const ops    = parseOperators(query);
   const cleanQ = ops.cleanQuery;
 
-  const jobs = [];
-  if (sources.includes('pixabay') && PIXABAY_KEY) jobs.push(searchPixabay(cleanQ, { category, page }));
-  if (sources.includes('pexels') && PEXELS_KEY)   jobs.push(searchPexels(cleanQ, { page }));
-  if (sources.includes('archive'))                 jobs.push(searchArchive(cleanQ, { page }));
+  // Build ordered list of source functions (staggered to avoid rate-limits)
+  const fns = [];
+  if (sources.includes('pixabay') && PIXABAY_KEY) fns.push(() => searchPixabay(cleanQ, { category, page }));
+  if (sources.includes('pexels')  && PEXELS_KEY)  fns.push(() => searchPexels(cleanQ, { page }));
+  if (sources.includes('archive'))                 fns.push(() => searchArchive(cleanQ, { page }));
 
-  const settled = await Promise.allSettled(jobs);
-  let results = settled.flatMap(r => r.status === 'fulfilled' ? r.value : []);
+  const settled = await staggered(fns, 350);
+  let results = settled.flatMap(r => (r?.__error ? [] : Array.isArray(r) ? r : []));
+
+  // Collect any per-source errors for transparency
+  const sourceErrors = settled
+    .map((r, i) => r?.__error ? { source: fns[i]?.name || `source-${i}`, error: r.__error } : null)
+    .filter(Boolean);
 
   // Apply NOT exclusions
   if (ops.mustExclude.length) {
@@ -173,7 +197,7 @@ export async function searchVideos({ query, category = '', sources = ['pixabay',
     });
   }
 
-  return { results, operators: ops, total: results.length };
+  return { results, operators: ops, total: results.length, sourceErrors };
 }
 
 /* ─── Operator Suggestions ─────────────────────────────────────────── */
