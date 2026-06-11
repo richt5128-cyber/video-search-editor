@@ -4,11 +4,13 @@ import TrimEditor from '../components/editor/TrimEditor';
 import FadeEditor from '../components/editor/FadeEditor';
 import TextOverlay from '../components/editor/TextOverlay';
 import ScreenOverlay from '../components/editor/ScreenOverlay';
+import SaveModal from '../components/editor/SaveModal';
 import useEditorStore from '../store/editorStore';
+import { saveProject } from '../api/projects';
 import {
   FiScissors, FiSunrise, FiType, FiLayers,
   FiDownload, FiSave, FiFilm, FiSearch, FiInfo,
-  FiPlay, FiPause, FiVolume2
+  FiPlay, FiPause, FiCheckCircle,
 } from 'react-icons/fi';
 
 const TABS = [
@@ -21,14 +23,17 @@ const TABS = [
 const fmt = (s) =>
   `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
-export default function EditorPage({ onGoToSearch }) {
-  const { clips, playing, setPlaying, getTotalDuration } = useEditorStore();
+export default function EditorPage({ onGoToSearch, onGoToProjects }) {
+  const { clips, playing, setPlaying, getTotalDuration, project, setProject } = useEditorStore();
   const [selectedClipId, setSelectedClipId] = useState(null);
   const [activeTab, setActiveTab]           = useState('trim');
+  const [saveOpen, setSaveOpen]             = useState(false);
+  const [lastSaved, setLastSaved]           = useState(null); // ISO timestamp
 
-  const clip = selectedClipId ? clips.find(c => c.id === selectedClipId) : null;
+  const clip  = selectedClipId ? clips.find(c => c.id === selectedClipId) : null;
   const total = getTotalDuration();
 
+  /* ── Export manifest ───────────────────────────────────── */
   const exportManifest = () => {
     const manifest = {
       version: '1.0',
@@ -42,23 +47,47 @@ export default function EditorPage({ onGoToSearch }) {
       })),
     };
     const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'compilation-manifest.json';
+    const a    = document.createElement('a');
+    a.href     = URL.createObjectURL(blob);
+    a.download = `${project?.name || 'compilation'}-manifest.json`;
     a.click();
+  };
+
+  /* ── Save handler (called by SaveModal) ────────────────── */
+  const handleSave = async ({ name, category, description, tags }) => {
+    const saved = await saveProject({
+      id:          project?.id || null,
+      name,
+      category,
+      description,
+      tags,
+      clips,
+    });
+    setProject(saved);
+    setLastSaved(new Date().toISOString());
   };
 
   return (
     <div className="flex flex-col h-screen bg-gray-950 text-white overflow-hidden">
 
-      {/* ── Top bar ───────────────────────────────────────────────── */}
+      {/* ── Top bar ─────────────────────────────────────────── */}
       <header className="flex-shrink-0 flex items-center justify-between
         px-4 py-2.5 bg-gray-900 border-b border-gray-800 gap-3">
+
         <div className="flex items-center gap-3">
           <span className="text-xl">🎬</span>
           <div className="hidden sm:block">
-            <p className="text-sm font-bold leading-none">CompileStudio</p>
-            <p className="text-[10px] text-gray-500">Editor</p>
+            <p className="text-sm font-bold leading-none">
+              {project?.name || 'Untitled Project'}
+            </p>
+            <p className="text-[10px] text-gray-500">
+              {project?.category || 'Editor'}
+              {lastSaved && (
+                <span className="ml-2 text-emerald-500">
+                  ✓ Saved {new Date(lastSaved).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+            </p>
           </div>
         </div>
 
@@ -67,12 +96,12 @@ export default function EditorPage({ onGoToSearch }) {
           <button
             onClick={() => setPlaying(!playing)}
             className="text-white hover:text-blue-400 transition-colors"
-            title={playing ? 'Pause' : 'Play timeline'}
+            title={playing ? 'Pause' : 'Play'}
           >
             {playing ? <FiPause size={15} /> : <FiPlay size={15} />}
           </button>
           <span className="text-xs font-mono text-gray-300">
-            {clips.length} clips · {fmt(total)}
+            {clips.length} clip{clips.length !== 1 ? 's' : ''} · {fmt(total)}
           </span>
         </div>
 
@@ -84,28 +113,43 @@ export default function EditorPage({ onGoToSearch }) {
               <FiSearch size={13} /> Search
             </button>
           )}
+          {onGoToProjects && (
+            <button onClick={onGoToProjects}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-700
+                hover:bg-gray-600 text-gray-300 rounded-lg text-xs font-medium transition-colors">
+              <FiFilm size={13} /> Projects
+            </button>
+          )}
           <button onClick={exportManifest}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700
               hover:bg-emerald-600 text-white rounded-lg text-xs font-medium transition-colors">
             <FiDownload size={13} /> Export
           </button>
           <button
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-700
-              hover:bg-blue-600 text-white rounded-lg text-xs font-medium transition-colors">
-            <FiSave size={13} /> Save
+            onClick={() => setSaveOpen(true)}
+            disabled={clips.length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600
+              hover:bg-blue-500 text-white rounded-lg text-xs font-semibold
+              transition-colors disabled:opacity-40 disabled:cursor-not-allowed
+              shadow-sm shadow-blue-900/50"
+          >
+            {lastSaved
+              ? <><FiCheckCircle size={13} /> Update</>
+              : <><FiSave size={13} /> Save</>
+            }
           </button>
         </div>
       </header>
 
-      {/* ── Timeline ──────────────────────────────────────────────── */}
+      {/* ── Timeline ────────────────────────────────────────── */}
       <div className="flex-shrink-0 border-b border-gray-800" style={{ height: 170 }}>
         <Timeline onClipSelect={(c) => { setSelectedClipId(c.id); setActiveTab('trim'); }} />
       </div>
 
-      {/* ── Main workspace ────────────────────────────────────────── */}
+      {/* ── Main workspace ──────────────────────────────────── */}
       <div className="flex-1 grid grid-cols-[260px_1fr] overflow-hidden">
 
-        {/* ── Clip list sidebar ─────────────────────────────────── */}
+        {/* ── Clip list sidebar ──────────────────────────────── */}
         <aside className="flex flex-col border-r border-gray-800 bg-gray-900 overflow-hidden">
           <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800">
             <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
@@ -136,23 +180,24 @@ export default function EditorPage({ onGoToSearch }) {
                   key={c.id}
                   onClick={() => { setSelectedClipId(c.id); setActiveTab('trim'); }}
                   className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg text-left
-                    transition-all group
+                    transition-all
                     ${selectedClipId === c.id
                       ? 'bg-blue-600/20 border border-blue-600/50 ring-1 ring-blue-600/20'
                       : 'border border-transparent hover:bg-gray-800 hover:border-gray-700'
                     }`}
                 >
-                  {/* Thumbnail */}
                   <div className="relative flex-shrink-0">
                     <img src={c.thumbnail} alt=""
                       className="w-12 h-8 object-cover rounded"
                       onError={e => { e.target.src = 'https://via.placeholder.com/48x32/1f2937/6b7280?text=◼'; }}
                     />
                     {c.fade_in > 0 && (
-                      <div className="absolute inset-y-0 left-0 w-2 bg-gradient-to-r from-black/60 to-transparent rounded-l pointer-events-none" />
+                      <div className="absolute inset-y-0 left-0 w-2
+                        bg-gradient-to-r from-black/60 to-transparent rounded-l pointer-events-none" />
                     )}
                     {c.fade_out > 0 && (
-                      <div className="absolute inset-y-0 right-0 w-2 bg-gradient-to-l from-black/60 to-transparent rounded-r pointer-events-none" />
+                      <div className="absolute inset-y-0 right-0 w-2
+                        bg-gradient-to-l from-black/60 to-transparent rounded-r pointer-events-none" />
                     )}
                   </div>
 
@@ -166,14 +211,13 @@ export default function EditorPage({ onGoToSearch }) {
                         </span>
                       )}
                     </div>
-                    {/* Indicator pills */}
                     <div className="flex gap-1 mt-0.5 flex-wrap">
-                      {(c.text_overlays?.length > 0) && (
+                      {c.text_overlays?.length > 0 && (
                         <span className="text-[9px] bg-purple-900/60 text-purple-300 px-1 rounded">
                           T×{c.text_overlays.length}
                         </span>
                       )}
-                      {(c.screen_overlays?.length > 0) && (
+                      {c.screen_overlays?.length > 0 && (
                         <span className="text-[9px] bg-teal-900/60 text-teal-300 px-1 rounded">
                           L×{c.screen_overlays.length}
                         </span>
@@ -195,7 +239,7 @@ export default function EditorPage({ onGoToSearch }) {
           </div>
         </aside>
 
-        {/* ── Edit panel ────────────────────────────────────────── */}
+        {/* ── Edit panel ──────────────────────────────────────── */}
         <main className="flex flex-col overflow-hidden bg-gray-950">
           {!clip ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center px-8">
@@ -228,9 +272,7 @@ export default function EditorPage({ onGoToSearch }) {
                       {fmt(clip.end_trim - clip.start_trim)} selected
                     </span>
                     <span className="text-gray-700">·</span>
-                    <span className="text-xs text-gray-600">
-                      {clip.duration}s original
-                    </span>
+                    <span className="text-xs text-gray-600">{clip.duration}s original</span>
                   </div>
                 </div>
                 <a
@@ -240,7 +282,6 @@ export default function EditorPage({ onGoToSearch }) {
                   className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-800
                     hover:bg-gray-700 border border-gray-700 rounded-lg text-xs
                     text-gray-300 transition-colors flex-shrink-0"
-                  title="Preview source"
                 >
                   <FiPlay size={11} /> Preview
                 </a>
@@ -260,8 +301,7 @@ export default function EditorPage({ onGoToSearch }) {
                         : 'text-gray-400 hover:text-white hover:bg-gray-800'
                       }`}
                   >
-                    {t.icon}
-                    <span>{t.label}</span>
+                    {t.icon} {t.label}
                   </button>
                 ))}
               </div>
@@ -277,6 +317,15 @@ export default function EditorPage({ onGoToSearch }) {
           )}
         </main>
       </div>
+
+      {/* ── Save modal ───────────────────────────────────────── */}
+      <SaveModal
+        isOpen={saveOpen}
+        onClose={() => setSaveOpen(false)}
+        onSave={handleSave}
+        project={project}
+        clipCount={clips.length}
+      />
     </div>
   );
 }
