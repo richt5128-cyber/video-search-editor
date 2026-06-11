@@ -2,13 +2,14 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import SearchBar     from '../components/search/SearchBar';
 import SearchFilters from '../components/search/SearchFilters';
 import VideoCard     from '../components/search/VideoCard';
-import PreviewDrawer from '../components/search/PreviewDrawer';
+import PreviewDrawer      from '../components/search/PreviewDrawer';
+import SaveToProjectModal from '../components/search/SaveToProjectModal';
 import { searchVideos } from '../api/videoSearch';
 import useEditorStore   from '../store/editorStore';
 import {
   FiLoader, FiAlertCircle, FiFilm, FiGrid, FiList,
   FiX, FiClock, FiChevronDown, FiAlertTriangle,
-  FiRefreshCw,
+  FiRefreshCw, FiFolder,
 } from 'react-icons/fi';
 
 const SORT_OPTIONS = [
@@ -37,6 +38,7 @@ export default function SearchPage({ onGoToEditor }) {
   });
   const [history,      setHistory]        = useState([]);
   const [previewVideo, setPreviewVideo]   = useState(null); // drawer
+  const [saveToProjectOpen, setSaveToProjectOpen] = useState(false);
 
   const { addClip, clips } = useEditorStore();
   const addedUrls = new Set(clips.map(c => c.url).filter(Boolean));
@@ -154,6 +156,15 @@ export default function SearchPage({ onGoToEditor }) {
                   ))}
                 </div>
 
+                {clips.length > 0 && (
+                  <button
+                    onClick={() => setSaveToProjectOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700
+                      hover:bg-emerald-600 text-white rounded-lg text-xs font-semibold transition-colors">
+                    <FiFolder size={12} />
+                    Save to Project
+                  </button>
+                )}
                 <button onClick={onGoToEditor}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600
                     hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition-colors">
@@ -301,15 +312,23 @@ export default function SearchPage({ onGoToEditor }) {
                 </div>
               )}
 
-              {/* Bottom editor CTA */}
+              {/* Bottom CTA row */}
               {clips.length > 0 && (
-                <div className="flex justify-center pt-2 pb-4">
+                <div className="flex items-center justify-center gap-3 pt-2 pb-4 flex-wrap">
+                  <button
+                    onClick={() => setSaveToProjectOpen(true)}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-emerald-700
+                      hover:bg-emerald-600 text-white rounded-xl text-sm font-semibold
+                      transition-colors shadow-lg shadow-emerald-900/40">
+                    <FiFolder size={14} />
+                    Save {clips.length} clip{clips.length !== 1 ? 's' : ''} to Project
+                  </button>
                   <button onClick={onGoToEditor}
                     className="flex items-center gap-2 px-5 py-2.5 bg-blue-600
                       hover:bg-blue-500 text-white rounded-xl text-sm font-semibold
                       transition-colors shadow-lg shadow-blue-900/40">
                     <FiFilm size={14} />
-                    Go to Editor — {clips.length} clip{clips.length !== 1 ? 's' : ''} ready
+                    Go to Editor
                   </button>
                 </div>
               )}
@@ -317,6 +336,17 @@ export default function SearchPage({ onGoToEditor }) {
           )}
         </div>
       </div>
+
+      {/* ── Save-to-project modal ──────────────────────────────── */}
+      <SaveToProjectModal
+        isOpen={saveToProjectOpen}
+        onClose={() => setSaveToProjectOpen(false)}
+        clips={clips}
+        onSaved={(project) => {
+          setSaveToProjectOpen(false);
+          // Optionally navigate to editor with this project loaded
+        }}
+      />
 
       {/* ── Preview drawer ───────────────────────────────────── */}
       <PreviewDrawer
